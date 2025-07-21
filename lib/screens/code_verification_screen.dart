@@ -4,6 +4,7 @@ import '../widgets/custom_input.dart';
 import '../widgets/custom_button.dart';
 import '../services/api_service.dart';
 import 'success_dialog.dart';
+import '../utils/verification_helper.dart'; // ✅ Asegúrate de importar esto
 
 class CodeVerificationScreen extends StatelessWidget {
   const CodeVerificationScreen({super.key});
@@ -16,8 +17,13 @@ class CodeVerificationScreen extends StatelessWidget {
       final code = _codeController.text.trim();
       final result = await ApiService.checkVerification(ApiService.phone, code);
       if (result) {
-        showSuccessDialog(context, onAccept: () => Navigator.pushNamed(context, '/password'));
-      } else {
+ // ✅ Guardar que el celular ya fue verificado
+        await VerificationHelper.savePhoneVerified();
+
+        showSuccessDialog(
+          context,
+          onAccept: () => Navigator.pushNamed(context, '/password'),
+        );      } else {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Código incorrecto')));
       }
     }
