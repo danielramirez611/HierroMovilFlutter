@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../services/api_service.dart';
+import 'dart:io';
+import 'dart:async';
 
 class PacientesPage extends StatefulWidget {
   const PacientesPage({super.key});
@@ -14,6 +16,7 @@ class _PacientesPageState extends State<PacientesPage>
   List<dynamic> pacientes = [];
   List<dynamic> usuarios = [];
   bool loading = true;
+Timer? _internetTimer;
 
   final _formKey = GlobalKey<FormState>();
   int? editingId;
@@ -30,7 +33,9 @@ class _PacientesPageState extends State<PacientesPage>
 @override
 void initState() {
   super.initState();
+  
   fetchData();
+  
 
   _animationController = AnimationController(
     duration: const Duration(milliseconds: 800),
@@ -46,11 +51,47 @@ void initState() {
     parent: _animationController!,
     curve: Curves.easeIn,
   );
+    startInternetChecker(); // 👈 Agrega esta línea
+
+}
+void startInternetChecker() {
+  _internetTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    final connected = await hasInternetConnection();
+    if (connected) {
+      hideBanner();
+      await fetchData(); // 🔄 actualiza pacientes automáticamente
+    } else {
+      showOfflineBanner();
+    }
+  });
+}
+Future<bool> hasInternetConnection() async {
+  try {
+    final result = await InternetAddress.lookup('example.com');
+    return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
+}
+
+void showOfflineBanner() {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('⚠ Sin conexión. Mostrando pacientes cacheados.'),
+      duration: Duration(days: 1),
+    ),
+  );
+}
+
+void hideBanner() {
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
 }
 
   @override
   void dispose() {
     _animationController?.dispose();
+      _internetTimer?.cancel(); // 👈 importante
+
     super.dispose();
   }
 
@@ -189,6 +230,8 @@ Future<void> fetchData() async {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gestión de Pacientes'),
+          automaticallyImplyLeading: false, // 👈 ESTO OCULTA LA FLECHA DE RETROCESO
+
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
       ),

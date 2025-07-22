@@ -30,14 +30,14 @@ class CustomBottomNav extends StatelessWidget {
       switch (index) {
         case 0: _showLoadingAndNavigate(context, '/pacientes'); break;
         case 1: _showLoadingAndNavigate(context, '/tambos'); break;
-        case 2: _showLoadingAndNavigate(context, '/asignacion'); break;
-        case 3: _showLoadingAndNavigate(context, '/visitas'); break;
-        case 4: _showLoadingAndNavigate(context, '/alertas'); break;
+        case 2: _showLoadingAndNavigate(context, '/visitas'); break;
+        case 3: _showLoadingAndNavigate(context, '/perfil'); break;
       }
-    } else if (rol == 'gestante' || rol == 'niño') {
+    } else {
       switch (index) {
         case 0: _showLoadingAndNavigate(context, '/visitas'); break;
         case 1: _showLoadingAndNavigate(context, '/comunicados'); break;
+        case 2: _showLoadingAndNavigate(context, '/perfil'); break;
       }
     }
   }
@@ -46,73 +46,73 @@ class CustomBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = _buildNavItems();
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(25),
-          topRight: Radius.circular(25),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, left: 20, right: 20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 12,
-            offset: const Offset(0, -3),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BottomNavigationBar(
+            currentIndex: currentIndex,
+            backgroundColor: Colors.grey[100],
+            type: BottomNavigationBarType.fixed,
+            selectedItemColor: Colors.indigo,
+            unselectedItemColor: Colors.grey,
+            selectedFontSize: 12,
+            unselectedFontSize: 11,
+            onTap: onTap ?? (index) => _handleNavigation(context, index),
+            showUnselectedLabels: false,
+            elevation: 0,
+            items: items,
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(25),
-          topRight: Radius.circular(25),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: currentIndex,
-          backgroundColor: Colors.white,
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: Colors.indigo[600],
-          unselectedItemColor: Colors.grey[500],
-          selectedFontSize: 14,
-          unselectedFontSize: 12,
-          iconSize: 26,
-          onTap: onTap ?? (index) => _handleNavigation(context, index),
-          items: items,
-          showUnselectedLabels: true,
         ),
       ),
     );
   }
 
   List<BottomNavigationBarItem> _buildNavItems() {
-    if (rol == 'administrador') {
-      return [
-        _buildStyledItem(Icons.person_rounded, 'Pacientes', 0),
-        _buildStyledItem(Icons.local_hospital, 'Tambos', 1),
-        _buildStyledItem(Icons.assignment_add, 'Asignacion', 2),
-        _buildStyledItem(Icons.follow_the_signs_outlined, 'Visitas', 3),
-        _buildStyledItem(Icons.notifications_none_outlined, 'Alertas', 4),
+    final isAdmin = rol == 'administrador';
 
-      ];
-    } else {
-      return [
-        _buildStyledItem(Icons.home_rounded, 'Visitas', 0),
-        _buildStyledItem(Icons.campaign_outlined, 'Comunicados', 1),
-      ];
-    }
-  }
+    final iconLabels = isAdmin
+        ? [
+            [Icons.person_rounded, 'Pacientes'],
+            [Icons.local_hospital_outlined, 'Tambos'],
+             [Icons.dashboard_outlined, 'Inicio'],        // 👉 nuevo ítem para dashboard
+            [Icons.follow_the_signs_outlined, 'Visitas'],
+            [Icons.account_circle, 'Perfil'],
+          ]
+        : [
+            [Icons.home_rounded, 'Visitas'],
+            [Icons.campaign_outlined, 'Comunicados'],
+            [Icons.account_circle, 'Perfil'],
+          ];
 
-  BottomNavigationBarItem _buildStyledItem(IconData icon, String label, int index) {
-    return BottomNavigationBarItem(
-      icon: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: index == currentIndex ? Colors.indigo.withOpacity(0.15) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+    return List.generate(iconLabels.length, (index) {
+      final icon = iconLabels[index][0] as IconData;
+      final label = iconLabels[index][1] as String;
+
+      return BottomNavigationBarItem(
+        icon: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: currentIndex == index ? Colors.indigo.withOpacity(0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(icon, size: 26),
         ),
-        child: Icon(icon),
-      ),
-      label: label,
-    );
+        label: label,
+      );
+    });
   }
 }

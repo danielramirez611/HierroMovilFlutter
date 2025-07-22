@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../services/api_service.dart';
+import 'dart:io';
+import 'dart:async';
 
 class TambosPage extends StatefulWidget {
   const TambosPage({super.key});
@@ -13,6 +15,7 @@ class _TambosPageState extends State<TambosPage> {
   List<dynamic> tambos = [];
   List<dynamic> usuarios = []; // ✅ ESTA LÍNEA ES CLAVE
   final codeController = TextEditingController();
+  Timer? _internetTimer;
 
   final representanteController = TextEditingController();
   final telefonoController = TextEditingController();
@@ -62,9 +65,53 @@ class _TambosPageState extends State<TambosPage> {
   void initState() {
     super.initState();
     fetchTambos();
-    fetchUsuarios(); // ← Agrega esto
-    setState(() {}); // ← opcional para forzar redibujo
+    fetchUsuarios();
+    startInternetChecker(); // 👈 línea nueva
+    setState(() {}); 
   }
+  
+@override
+void dispose() {
+  _internetTimer?.cancel(); // ✅ importante
+  codeController.dispose();
+  representanteController.dispose();
+  telefonoController.dispose();
+  super.dispose();
+}
+
+void startInternetChecker() {
+  _internetTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    final connected = await hasInternetConnection();
+    if (connected) {
+      hideBanner();
+      await fetchTambos(); // 🔄 recarga datos reales
+    } else {
+      showOfflineBanner();
+    }
+  });
+}
+
+Future<bool> hasInternetConnection() async {
+  try {
+    final result = await InternetAddress.lookup('example.com');
+    return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
+}
+
+void showOfflineBanner() {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('⚠ Sin conexión. Mostrando tambos cacheados.'),
+      duration: Duration(days: 1),
+    ),
+  );
+}
+
+void hideBanner() {
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+}
 
   Future<void> fetchUsuarios() async {
     final data = await ApiService.getAllUsers();
@@ -510,6 +557,7 @@ class _TambosPageState extends State<TambosPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gestión de Tambos'),
+          automaticallyImplyLeading: false, // 👈 ESTO OCULTA LA FLECHA DE RETROCESO
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
       ),

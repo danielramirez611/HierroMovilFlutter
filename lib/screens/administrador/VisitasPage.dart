@@ -3,6 +3,10 @@ import 'package:geolocator/geolocator.dart';
 import '../../../services/api_service.dart';
 import '../../widgets/mapa_selector.dart';
 import 'package:latlong2/latlong.dart'; // 👈 NECESARIO para usar LatLng correctamente
+import 'dart:io';
+import 'dart:async';
+import 'dart:convert'; // para usar jsonEncode y jsonDecode
+import 'package:shared_preferences/shared_preferences.dart'; // para usar SharedPreferences
 
 class VisitasPage extends StatefulWidget {
   const VisitasPage({super.key});
@@ -15,6 +19,7 @@ class _VisitasPageState extends State<VisitasPage> {
   List<dynamic> visitas = [];
   List<dynamic> pacientes = [];
   List<dynamic> gestores = [];
+  Timer? _internetTimer;
 
   bool loading = true;
   final _formKey = GlobalKey<FormState>();
@@ -40,7 +45,87 @@ class _VisitasPageState extends State<VisitasPage> {
     super.initState();
     fetchVisitas();
     fetchPacientesYGestores();
+    startInternetChecker(); // ✅ agrega esta línea
   }
+
+@override
+void dispose() {
+  _internetTimer?.cancel(); // ✅ importante
+  observacionController.dispose();
+  alturaController.dispose();
+  pesoController.dispose();
+  super.dispose();
+}
+Future<void> sincronizarVisitasOfflineSiExisten() async {
+  final prefs = await SharedPreferences.getInstance();
+  final offlineData = prefs.getString('visitasOffline');
+  if (offlineData != null) {
+    final List visitasOffline = jsonDecode(offlineData);
+    if (visitasOffline.isNotEmpty) {
+      final ok = await ApiService.sincronizarVisitasOffline(visitasOffline.cast<Map<String, dynamic>>());
+      if (ok) {
+        await prefs.remove('visitasOffline');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Visitas offline sincronizadas.')),
+        );
+      }
+    }
+  }
+}
+
+void startInternetChecker() {
+  _internetTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    final connected = await hasInternetConnection();
+    
+    if (!connected) {
+      showOfflineBanner(); // ⚠ sin conexión
+      return;
+    }
+
+    // Si hay conexión:
+    hideBanner();
+
+    final prefs = await SharedPreferences.getInstance();
+    final offlineData = prefs.getString('visitasOffline');
+    final List visitasOffline = offlineData != null ? jsonDecode(offlineData) : [];
+
+    if (visitasOffline.isNotEmpty) {
+      // 🟡 Avisar que hay pendientes antes de sincronizar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🔄 ${visitasOffline.length} visitas pendientes de sincronizar...'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    await sincronizarVisitasOfflineSiExisten(); // 🔁
+    await fetchVisitas(); // 🔄
+  });
+}
+
+
+Future<bool> hasInternetConnection() async {
+  try {
+    final result = await InternetAddress.lookup('example.com');
+    return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
+}
+
+void showOfflineBanner() {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('⚠ Sin conexión. Mostrando visitas cacheadas.'),
+      duration: Duration(days: 1),
+    ),
+  );
+}
+
+void hideBanner() {
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+}
 
   Future<void> fetchPacientesYGestores() async {
     pacientes = await ApiService.getPacientes();
@@ -376,40 +461,52 @@ DropdownButtonFormField<int>(
     );
   }
 
-  Future<void> saveVisita() async {
-    if (!_formKey.currentState!.validate()) return;
+Future<void> saveVisita() async {
+  if (!_formKey.currentState!.validate()) return;
 
-    final data = {
-      "pacienteId": pacienteId!,
-      "gestorId": gestorId!,
-      "asignacionId": asignacionId ?? 1,
-      "fechaVisita": fechaVisita.toIso8601String(), // programada
-      "observacion": observacionController.text.trim(),
-      "altura": double.tryParse(alturaController.text) ?? 0,
-      "peso": double.tryParse(pesoController.text) ?? 0,
-      "tieneAgua": tieneAgua,
-      "tieneLuz": tieneLuz,
-      "tieneInternet": tieneInternet,
-      "latitud": latitud ?? 0.0,
-      "longitud": longitud ?? 0.0,
-      "ubicacionConfirmada": ubicacionConfirmada,
-      "registradoOffline": false, // o true si estás sin conexión
-    };
+  final data = {
+    "pacienteId": pacienteId!,
+    "gestorId": gestorId!,
+    "asignacionId": asignacionId ?? 1,
+    "fechaVisita": fechaVisita.toIso8601String(),
+    "observacion": observacionController.text.trim(),
+    "altura": double.tryParse(alturaController.text) ?? 0,
+    "peso": double.tryParse(pesoController.text) ?? 0,
+    "tieneAgua": tieneAgua,
+    "tieneLuz": tieneLuz,
+    "tieneInternet": tieneInternet,
+    "latitud": latitud ?? 0.0,
+    "longitud": longitud ?? 0.0,
+    "ubicacionConfirmada": ubicacionConfirmada,
+    "fechaRegistro": DateTime.now().toIso8601String(),
+    "registradoOffline": false,
+  };
 
-    final ok =
-        editingId == null
-            ? await ApiService.createVisita(data)
-            : await ApiService.updateVisita(editingId!, data);
+  final conectado = await hasInternetConnection();
 
+  if (conectado) {
+    final ok = editingId == null
+        ? await ApiService.createVisita(data)
+        : await ApiService.updateVisita(editingId!, data);
     if (ok) {
       Navigator.pop(context);
       fetchVisitas();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ Error al guardar visita')),
-      );
     }
+  } else {
+    // Guardar offline
+    final prefs = await SharedPreferences.getInstance();
+    final offlineData = prefs.getString('visitasOffline');
+    final List visitasOffline = offlineData != null ? jsonDecode(offlineData) : [];
+    visitasOffline.add({...data, "registradoOffline": true});
+    await prefs.setString('visitasOffline', jsonEncode(visitasOffline));
+    Navigator.pop(context);
+    fetchVisitas();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('✅ Visita guardada offline.')),
+    );
   }
+}
+
 
   Future<void> deleteVisita(int id) async {
     final confirm = await showDialog(
@@ -442,6 +539,8 @@ DropdownButtonFormField<int>(
     return Scaffold(
       appBar: AppBar(
         title: const Text('Visitas Domiciliarias'),
+          automaticallyImplyLeading: false, // 👈 ESTO OCULTA LA FLECHA DE RETROCESO
+
         backgroundColor: Colors.teal,
       ),
       body:
@@ -488,12 +587,14 @@ DropdownButtonFormField<int>(
                   );
                 },
               ),
+
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => openForm(),
         icon: const Icon(Icons.add),
         label: const Text('Nueva Visita'),
         backgroundColor: Colors.teal,
       ),
+      
     );
   }
 }

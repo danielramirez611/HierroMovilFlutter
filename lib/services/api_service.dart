@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static String baseUrl = 'https://192.168.18.10:7268/api';
@@ -10,7 +11,7 @@ class ApiService {
 
   static Map<String, dynamic>? currentUser;
   //-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
-                                                                             /// DNI ///
+                                                                             /// DNI - LOGIN ///
   /// Envía un código SMS al número proporcionado
   static Future<bool> sendVerification(String number) async {
     try {
@@ -107,7 +108,8 @@ class ApiService {
           return false;
         }
 
-        currentUser = data;
+        await saveUserSession(data);
+
         return true;
       }
 
@@ -119,6 +121,29 @@ class ApiService {
     }
   }
  
+  // 🔐 Guardar la sesión del usuario
+static Future<void> saveUserSession(Map<String, dynamic> user) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('currentUser', jsonEncode(user));
+  currentUser = user;
+}
+
+ // 📥 Cargar sesión al abrir la app
+static Future<void> loadUserSession() async {
+  final prefs = await SharedPreferences.getInstance();
+  final userString = prefs.getString('currentUser');
+  if (userString != null) {
+    currentUser = jsonDecode(userString);
+  }
+}
+
+ // ❌ Cerrar sesión (borrar usuario)
+static Future<void> clearUserSession() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('currentUser');
+  currentUser = null;
+}
+
  /// 🔄 Obtener todos los usuarios
 static Future<List<dynamic>> getAllUsers() async {
   try {
@@ -135,39 +160,54 @@ static Future<List<dynamic>> getAllUsers() async {
   }
 }
 
-                                                                             /// DNI ///
+                                                                             /// DNI - LOGIN ///
 //-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
                                                                              /// PACIENTES ///
 /// 🔄 Obtener todos los pacientes
 static Future<List<dynamic>> getPacientes() async {
+  final prefs = await SharedPreferences.getInstance();
+
   try {
     final response = await http.get(Uri.parse('$baseUrl/Pacientes'));
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      print('❌ Error al obtener pacientes: ${response.body}');
-      return [];
+      final data = jsonDecode(response.body);
+      await prefs.setString('cachedPacientes', jsonEncode(data)); // ✅ Guarda copia local
+      return data;
     }
   } catch (e) {
-    print('❗ Error en getPacientes: $e');
-    return [];
+    print('⚠️ Sin conexión. Usando pacientes cacheados.');
   }
+
+  final cached = prefs.getString('cachedPacientes');
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// 🔄 Obtener usuarios elegibles para paciente (Niño o Gestante)
 static Future<List<dynamic>> getUsuariosPacientes() async {
+  final prefs = await SharedPreferences.getInstance();
+  const cacheKey = 'cachedUsuariosPacientes';
+
   try {
-    final response = await http.get(Uri.parse('$baseUrl/Pacientes/usuarios-pacientes'));
+    final response = await http.get(
+      Uri.parse('$baseUrl/Pacientes/usuarios-pacientes'),
+    );
+
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
+      await prefs.setString(cacheKey, jsonEncode(data)); // ✅ guarda en caché
+      return data;
     } else {
       print('❌ Error al obtener usuarios pacientes: ${response.body}');
-      return [];
     }
   } catch (e) {
-    print('❗ Error en getUsuariosPacientes: $e');
-    return [];
+    print('⚠️ Sin conexión. Cargando usuarios pacientes desde caché.');
   }
+
+  // 🧠 Recuperar desde caché si no hay red
+  final cached = prefs.getString(cacheKey);
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// ➕ Crear paciente
@@ -222,31 +262,51 @@ static Future<bool> deletePaciente(int id) async {
 
 /// 🔍 Obtener pacientes filtrados por rol
 static Future<List<dynamic>> getPacientesPorRol(String rol) async {
+  final prefs = await SharedPreferences.getInstance();
+  final cacheKey = 'cachedPacientesPorRol_$rol';
+
   try {
-    final response = await http.get(Uri.parse('$baseUrl/Pacientes/filtrar?rol=$rol'));
+    final response = await http.get(
+      Uri.parse('$baseUrl/Pacientes/filtrar?rol=$rol'),
+    );
+
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
+      await prefs.setString(cacheKey, jsonEncode(data)); // ✅ guarda en caché
+      return data;
     } else {
       print('❌ Error al filtrar pacientes: ${response.body}');
-      return [];
     }
   } catch (e) {
-    print('❗ Error en getPacientesPorRol: $e');
-    return [];
+    print('⚠️ Sin conexión. Cargando pacientes con rol "$rol" desde caché.');
   }
+
+  // 🧠 Devolver desde caché si no hay red
+  final cached = prefs.getString(cacheKey);
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
                                                                               /// PACIENTES ///
 //-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
                                                                               /// TAMBOS ///
 /// 🔄 Obtener todos los tambos
 static Future<List<dynamic>> getTambos() async {
+  final prefs = await SharedPreferences.getInstance();
+
   try {
     final response = await http.get(Uri.parse('$baseUrl/Tambos'));
-    return response.statusCode == 200 ? jsonDecode(response.body) : [];
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      await prefs.setString('cachedTambos', jsonEncode(data)); // ✅ Guarda en caché
+      return data;
+    }
   } catch (e) {
-    print('❗ Error en getTambos: $e');
-    return [];
+    print('⚠️ Sin conexión. Cargando tambos desde caché.');
   }
+
+  final cached = prefs.getString('cachedTambos');
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// ➕ Crear tambo
@@ -317,7 +377,6 @@ static Future<String> getNextCode(String departamento, String provincia, String 
   }
 }
 
-
                                                                               /// TAMBOS ///
 //-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
                                                                               /// UBIGUEO ///
@@ -358,24 +417,42 @@ static Future<List<String>> getDistritos(String departamento, String provincia) 
                                                                               /// ASIGNACION TAMBO ///
 /// Obtener asignaciones completas
 static Future<List<dynamic>> getAsignacionesExtendidas() async {
+  final prefs = await SharedPreferences.getInstance();
+
   try {
     final res = await http.get(Uri.parse('$baseUrl/Asignaciones/extendidas'));
-    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      await prefs.setString('cachedAsignaciones', jsonEncode(data)); // ✅ Guardar caché
+      return data;
+    }
   } catch (e) {
-    print('❗ Error en getAsignacionesExtendidas: $e');
-    return [];
+    print('⚠️ Sin conexión. Cargando asignaciones desde caché.');
   }
+
+  final cached = prefs.getString('cachedAsignaciones');
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// Obtener gestores disponibles
 static Future<List<dynamic>> getGestoresDisponibles() async {
+  final prefs = await SharedPreferences.getInstance();
+
   try {
     final res = await http.get(Uri.parse('$baseUrl/Asignaciones/gestores-disponibles'));
-    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      await prefs.setString('cachedGestoresDisponibles', jsonEncode(data));
+      return data;
+    }
   } catch (e) {
-    print('❗ Error en getGestoresDisponibles: $e');
-    return [];
+    print('⚠️ Sin conexión. Cargando gestores desde caché.');
   }
+
+  final cached = prefs.getString('cachedGestoresDisponibles');
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// Obtener tambos disponibles
@@ -384,6 +461,10 @@ static Future<List<dynamic>> getTambosDisponibles({
   String? provincia,
   String? distrito,
 }) async {
+  final prefs = await SharedPreferences.getInstance();
+
+  final cacheKey = 'cachedTambosDisponibles_${departamento ?? ""}_${provincia ?? ""}_${distrito ?? ""}';
+
   try {
     final uri = Uri.parse('$baseUrl/Asignaciones/tambos-disponibles').replace(queryParameters: {
       if (departamento != null) 'departamento': departamento,
@@ -392,11 +473,18 @@ static Future<List<dynamic>> getTambosDisponibles({
     });
 
     final res = await http.get(uri);
-    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      await prefs.setString(cacheKey, jsonEncode(data));
+      return data;
+    }
   } catch (e) {
-    print('❗ Error en getTambosDisponibles: $e');
-    return [];
+    print('⚠️ Sin conexión. Cargando tambos desde caché: $cacheKey');
   }
+
+  final cached = prefs.getString(cacheKey);
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// Crear asignación
@@ -439,6 +527,7 @@ static Future<bool> deleteAsignacion(int id) async {
     return false;
   }
 }
+
 static Future<bool> deleteAsignacionPermanente(int id) async {
   try {
     final res = await http.delete(Uri.parse('$baseUrl/Asignaciones/$id/hard'));
@@ -454,26 +543,45 @@ static Future<bool> deleteAsignacionPermanente(int id) async {
                                                                              /// VISITAS ///
 //🔄 Obtener todas las visitas domiciliarias
 static Future<List<dynamic>> getVisitas() async {
-  try{
+  final prefs = await SharedPreferences.getInstance();
+
+  try {
     final response = await http.get(Uri.parse('$baseUrl/VisitaDomiciliaria'));
-    return response.statusCode == 200 ? jsonDecode(response.body) : [];
-  }catch (e){
-    print('!Error en visualizacion de visitas: $e');
-    return [];
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      await prefs.setString('cachedVisitas', jsonEncode(data)); // ✅ guarda local
+      return data;
+    }
+  } catch (e) {
+    print('⚠️ Sin conexión. Cargando visitas desde caché.');
   }
+
+  final cached = prefs.getString('cachedVisitas');
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// 🔍 Obtener una visita por ID
-static Future <Map<String, dynamic>?> getVisitasById(int id) async {
+static Future<Map<String, dynamic>?> getVisitasById(int id) async {
+  final prefs = await SharedPreferences.getInstance();
+  final cacheKey = 'cachedVisitaById_$id';
+
   try {
     final response = await http.get(Uri.parse('$baseUrl/visitasDomiciliaria/$id'));
-    if (response.statusCode == 200 )  return jsonDecode(response.body);
-    return null;
-
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      await prefs.setString(cacheKey, jsonEncode(data)); // ✅ Guarda visita individual
+      return data;
+    }
   } catch (e) {
-    print('! Error en ver la visitas por ID: $e');
-    return null;
+    print('⚠️ Sin conexión. Cargando visita ID:$id desde caché.');
   }
+
+  // 🧠 Recuperar desde caché si no hay internet
+  final cached = prefs.getString(cacheKey);
+  if (cached != null) return jsonDecode(cached);
+
+  return null;
 }
 
 /// ➕ Crear visita domiciliaria
@@ -517,35 +625,77 @@ static Future<bool> deleteVisita(int id) async {
 
 /// 🔄 Obtener visitas por paciente
 static Future<List<dynamic>> getVisitasPorPaciente(int pacienteId) async {
+  final prefs = await SharedPreferences.getInstance();
+  final cacheKey = 'cachedVisitasPaciente_$pacienteId';
+
   try {
-    final response = await http.get(Uri.parse('$baseUrl/VisitaDomiciliaria/paciente/$pacienteId'));
-    return response.statusCode == 200 ? jsonDecode(response.body) : [];
+    final response = await http.get(
+      Uri.parse('$baseUrl/VisitaDomiciliaria/paciente/$pacienteId'),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      await prefs.setString(cacheKey, jsonEncode(data)); // ✅ guarda en caché
+      return data;
+    }
   } catch (e) {
-    print('❗ Error al ver visitas por paciente: $e');
-    return [];
+    print('⚠️ Sin conexión. Cargando visitas del paciente $pacienteId desde caché.');
   }
+
+  // 🧠 Devuelve desde caché si no hay conexión
+  final cached = prefs.getString(cacheKey);
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// 🔄 Obtener visitas por gestor
 static Future<List<dynamic>> getVisitasPorGestor(int gestorId) async {
+  final prefs = await SharedPreferences.getInstance();
+  final cacheKey = 'cachedVisitasGestor_$gestorId';
+
   try {
-    final response = await http.get(Uri.parse('$baseUrl/VisitaDomiciliaria/gestor/$gestorId'));
-    return response.statusCode == 200 ? jsonDecode(response.body) : [];
+    final response = await http.get(
+      Uri.parse('$baseUrl/VisitaDomiciliaria/gestor/$gestorId'),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      await prefs.setString(cacheKey, jsonEncode(data)); // ✅ guarda en caché
+      return data;
+    }
   } catch (e) {
-    print('❗ Error a ver visitas por gestor: $e');
-    return [];
+    print('⚠️ Sin conexión. Cargando visitas del gestor $gestorId desde caché.');
   }
+
+  // 🧠 Devuelve desde caché si no hay conexión
+  final cached = prefs.getString(cacheKey);
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// 🔄 Obtener pacientes sin visita hoy
 static Future<List<dynamic>> getPacientesSinVisitaHoy(int gestorId) async {
+  final prefs = await SharedPreferences.getInstance();
+  final cacheKey = 'cachedPacientesSinVisitaHoy_$gestorId';
+
   try {
-    final response = await http.get(Uri.parse('$baseUrl/VisitaDomiciliaria/no-registradas-hoy/$gestorId'));
-    return response.statusCode == 200 ? jsonDecode(response.body) : [];
+    final response = await http.get(
+      Uri.parse('$baseUrl/VisitaDomiciliaria/no-registradas-hoy/$gestorId'),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      await prefs.setString(cacheKey, jsonEncode(data)); // ✅ guarda en caché
+      return data;
+    }
   } catch (e) {
-    print('❗ Error en ver visitas del gestor del dia de hoy: $e');
-    return [];
+    print('⚠️ Sin conexión. Cargando pacientes sin visita hoy (gestor $gestorId) desde caché.');
   }
+
+  // 🧠 Devuelve desde caché si no hay internet
+  final cached = prefs.getString(cacheKey);
+  if (cached != null) return jsonDecode(cached);
+  return [];
 }
 
 /// 🔁 Sincronizar visitas offline

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/api_service.dart';
+import 'dart:io';
+import 'dart:async';
 
 class AsignacionTamboPage extends StatefulWidget {
   const AsignacionTamboPage({super.key});
@@ -12,7 +14,7 @@ class _AsignacionTamboPageState extends State<AsignacionTamboPage> {
   List<dynamic> asignaciones = [];
   List<dynamic> gestores = [];
   List<dynamic> tambosDisponibles = [];
-
+  Timer? _internetTimer;
   String? departamento;
   String? provincia;
   String? distrito;
@@ -31,8 +33,49 @@ class _AsignacionTamboPageState extends State<AsignacionTamboPage> {
   @override
   void initState() {
     super.initState();
+    startInternetChecker(); 
     fetchData();
   }
+
+@override
+void dispose() {
+  _internetTimer?.cancel(); // ✅ importante
+  super.dispose();
+}
+
+void startInternetChecker() {
+  _internetTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    final connected = await hasInternetConnection();
+    if (connected) {
+      hideBanner();
+      await fetchData(); // 🔄 recarga con datos online
+    } else {
+      showOfflineBanner();
+    }
+  });
+}
+
+Future<bool> hasInternetConnection() async {
+  try {
+    final result = await InternetAddress.lookup('example.com');
+    return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
+}
+
+void showOfflineBanner() {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('⚠ Sin conexión. Mostrando asignaciones cacheadas.'),
+      duration: Duration(days: 1),
+    ),
+  );
+}
+
+void hideBanner() {
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+}
 
   Future<void> fetchData() async {
     setState(() => loading = true);
@@ -394,6 +437,8 @@ if (!_formKey.currentState!.validate()) return; // este es GLOBAL
     return Scaffold(
       appBar: AppBar(
         title: const Text('Asignación de Tambos'),
+          automaticallyImplyLeading: false, // 👈 ESTO OCULTA LA FLECHA DE RETROCESO
+
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
       ),

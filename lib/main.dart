@@ -20,16 +20,22 @@ import 'screens/administrador/TambosPage.dart'; // ✅ Importa PACIENTES
 import 'screens/administrador/AsignacionTamboPage.dart'; // ✅ Importa PACIENTES
 import 'screens/administrador/VisitasPage.dart'; // ✅ Importa PACIENTES
 import 'package:permission_handler/permission_handler.dart';
-
+import 'package:flutter/services.dart';
+import 'screens/PerfilUsuarioScreen.dart';
 import 'http_override.dart'; // ✅ Clase que acepta certificados autofirmados
+
 Future<void> verificarYSolicitarPermisos() async {
   final status = await Permission.location.status;
   if (status.isDenied || status.isPermanentlyDenied) {
     await Permission.location.request();
   }
 }
-void main() {
-  HttpOverrides.global = MyHttpOverrides(); // ✅ Permitir certificados no válidos (solo en desarrollo)
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized(); // 👈 Necesario para await antes de runApp
+  HttpOverrides.global = MyHttpOverrides(); // ✅ Aceptar certificados no válidos (modo desarrollo)
+  await ApiService.loadUserSession(); // ✅ Cargar sesión guardada si existe
+  await verificarYSolicitarPermisos(); // ✅ Verificar permisos de ubicación
   runApp(const MyApp());
 }
 
@@ -42,7 +48,7 @@ class MyApp extends StatelessWidget {
       title: 'Niños de Hierro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(fontFamily: 'Arial'),
-      initialRoute: '/',
+      initialRoute: ApiService.currentUser != null ? '/home' : '/',
       routes: {
         '/': (context) => const WelcomeScreen(),
         '/dni': (context) => const DniScreen(),
@@ -53,11 +59,12 @@ class MyApp extends StatelessWidget {
         '/home_gestante': (context) => const HomeGestanteScreen(),
         '/home_gestor': (context) => const HomeGestorScreen(),
         '/home_administrador': (context) => const HomeAdministradorScreen(),
-      // Nuevas rutas
+        // Nuevas rutas
         '/pacientes': (context) => const PacientesPage(),
         '/tambos': (context) => const TambosPage(),
         '/asignacion': (context) => const AsignacionTamboPage(),
         '/visitas': (context) => const VisitasPage(),
+        '/perfil': (context) => const PerfilUsuarioScreen(),
 
        //  '/visitas': (context) => const VisitasPage(),
       },
