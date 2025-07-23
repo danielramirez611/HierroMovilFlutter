@@ -12,6 +12,7 @@ import '../screens/administrador/PacientesPage.dart';
 import '../screens/administrador/TambosPage.dart';
 import '../screens/administrador/AsignacionTamboPage.dart';
 import '../screens/administrador/VisitasPage.dart';
+import '../screens/administrador/AgendarVisitaPage.dart';
 import '../screens/PerfilUsuarioScreen.dart';
 
 class HomeAdministradorScreen extends StatefulWidget {
@@ -26,6 +27,8 @@ class _HomeAdministradorScreenState extends State<HomeAdministradorScreen> {
 
   int totalUsuarios = 0;
   int totalVisitas = 0;
+    int agendasVisitas = 0;
+
   int totalComunicados = 0;
   bool loading = true;
 
@@ -45,21 +48,25 @@ class _HomeAdministradorScreenState extends State<HomeAdministradorScreen> {
     try {
       final resUsuarios = await http.get(Uri.parse('${ApiService.baseUrl}/Users'));
       final resVisitas = await http.get(Uri.parse('${ApiService.baseUrl}/VisitaDomiciliaria'));
+      final resVisitasAgendadas = await http.get(Uri.parse('${ApiService.baseUrl}/VisitaDomiciliaria/agendadas'));
       final resComunicados = await http.get(Uri.parse('${ApiService.baseUrl}/Comunicado'));
 
       final usuarios = jsonDecode(resUsuarios.body);
       final visitas = jsonDecode(resVisitas.body);
+      final visitasAgendadas = jsonDecode(resVisitasAgendadas.body);
       final comunicados = jsonDecode(resComunicados.body);
 
       // Guarda en caché
       await prefs.setString('cachedUsuarios', jsonEncode(usuarios));
       await prefs.setString('cachedVisitas', jsonEncode(visitas));
+      await prefs.setString('cachedVisitasAgendadas', jsonEncode(visitasAgendadas));
       await prefs.setString('cachedComunicados', jsonEncode(comunicados));
 
       if (mounted) {
         setState(() {
           totalUsuarios = usuarios.length;
           totalVisitas = visitas.length;
+          agendasVisitas = visitasAgendadas.length;
           totalComunicados = comunicados.length;
           loading = false;
         });
@@ -69,11 +76,13 @@ class _HomeAdministradorScreenState extends State<HomeAdministradorScreen> {
 
       final cachedUsuarios = prefs.getString('cachedUsuarios');
       final cachedVisitas = prefs.getString('cachedVisitas');
+      final cachedVisitasAgendadas = prefs.getString('cachedVisitasAgendadas');
       final cachedComunicados = prefs.getString('cachedComunicados');
 
       setState(() {
         totalUsuarios = cachedUsuarios != null ? jsonDecode(cachedUsuarios).length : 0;
         totalVisitas = cachedVisitas != null ? jsonDecode(cachedVisitas).length : 0;
+        agendasVisitas = cachedVisitasAgendadas != null ? jsonDecode(cachedVisitasAgendadas).length : 0;
         totalComunicados = cachedComunicados != null ? jsonDecode(cachedComunicados).length : 0;
         loading = false;
       });
@@ -132,7 +141,9 @@ class _HomeAdministradorScreenState extends State<HomeAdministradorScreen> {
       PacientesPage(),           // index 0
       TambosPage(),              // index 1
       _buildDashboard(),         // index 2
-      VisitasPage(),             // index 3
+      VisitasPage(),  
+            AgendarVisitaPage(),
+           // index 3
       PerfilUsuarioScreen(),     // index 4
     ];
 
@@ -221,11 +232,18 @@ class _HomeAdministradorScreenState extends State<HomeAdministradorScreen> {
                       onTap: () => setState(() => currentIndex = 2),
                     ),
                     _buildDashboardCard(
-                      title: "Visitas",
+                      title: "Registrar Visitas",
                       count: totalVisitas,
                       icon: Icons.home,
                       color: Colors.teal,
                       onTap: () => setState(() => currentIndex = 3),
+                    ),
+                     _buildDashboardCard(
+                      title: "Agendar Visitas",
+                      count: agendasVisitas,
+                      icon: Icons.calendar_month,
+                      color: const Color.fromARGB(255, 97, 150, 0),
+                      onTap: () => setState(() => currentIndex = 4),
                     ),
                     _buildDashboardCard(
                       title: "Comunicados",

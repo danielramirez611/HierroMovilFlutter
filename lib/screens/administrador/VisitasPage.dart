@@ -9,11 +9,21 @@ import 'dart:convert'; // para usar jsonEncode y jsonDecode
 import 'package:shared_preferences/shared_preferences.dart'; // para usar SharedPreferences
 
 class VisitasPage extends StatefulWidget {
-  const VisitasPage({super.key});
+  final int? pacienteAgendadoId;
+  final int? gestorAgendadoId;
+  final DateTime? fechaAgendada;
+
+  const VisitasPage({
+    super.key,
+    this.pacienteAgendadoId,
+    this.gestorAgendadoId,
+    this.fechaAgendada,
+  });
 
   @override
   State<VisitasPage> createState() => _VisitasPageState();
 }
+
 
 class _VisitasPageState extends State<VisitasPage> {
   List<dynamic> visitas = [];
@@ -39,14 +49,86 @@ class _VisitasPageState extends State<VisitasPage> {
   double? latitud;
   double? longitud;
   bool ubicacionConfirmada = false;
+  bool _formAbiertoDesdeAgendada = false;
+bool _argumentosProcesados = false;
 
-  @override
-  void initState() {
-    super.initState();
-    fetchVisitas();
-    fetchPacientesYGestores();
-    startInternetChecker(); // ✅ agrega esta línea
+@override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+
+  if (!_argumentosProcesados) {
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+
+    if (args != null) {
+      pacienteId = args['pacienteId'];
+      gestorId = args['gestorId'];
+      fechaVisita = DateTime.tryParse(args['fechaVisita']) ?? DateTime.now();
+      asignacionId = args['agendamientoId'];
+
+      _formAbiertoDesdeAgendada = true;
+
+      fetchPacientesYGestores().then((_) {
+        // Solo abrir si hay datos válidos
+        final tienePacientes = pacientes.any((p) => p['id'] == pacienteId);
+        final tieneGestores = gestores.any((g) => g['id'] == gestorId);
+
+        if (tienePacientes && tieneGestores) {
+          openForm();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Formulario abierto sin conexión')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('⚠ No se encontraron datos para el paciente o gestor en modo offline')),
+          );
+        }
+      });
+    }
+
+    _argumentosProcesados = true;
   }
+}
+
+
+@override
+void initState() {
+  super.initState();
+  startInternetChecker();
+  cargarDatos();
+
+  
+}
+
+Future<void> cargarDatos() async {
+  await fetchPacientesYGestores();
+  await fetchVisitas();
+  setState(() => loading = false);
+}
+
+Future<void> fetchPacientesYGestores() async {
+  final conectado = await hasInternetConnection();
+
+  final prefs = await SharedPreferences.getInstance();
+
+  if (conectado) {
+    pacientes = await ApiService.getPacientes();
+    gestores = await ApiService.getGestoresDisponibles();
+
+    // Guardar copia local
+    await prefs.setString('pacientesCache', jsonEncode(pacientes));
+    await prefs.setString('gestoresCache', jsonEncode(gestores));
+  } else {
+    final pacientesRaw = prefs.getString('pacientesCache');
+    final gestoresRaw = prefs.getString('gestoresCache');
+
+    if (pacientesRaw != null) pacientes = jsonDecode(pacientesRaw);
+    if (gestoresRaw != null) gestores = jsonDecode(gestoresRaw);
+  }
+
+  setState(() {});
+}
+
+
 
 @override
 void dispose() {
@@ -74,7 +156,7 @@ Future<void> sincronizarVisitasOfflineSiExisten() async {
 }
 
 void startInternetChecker() {
-  _internetTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+  _internetTimer = Timer.periodic(const Duration(seconds: 30000), (_) async {
     final connected = await hasInternetConnection();
     
     if (!connected) {
@@ -127,12 +209,7 @@ void hideBanner() {
   ScaffoldMessenger.of(context).hideCurrentSnackBar();
 }
 
-  Future<void> fetchPacientesYGestores() async {
-    pacientes = await ApiService.getPacientes();
-    gestores = await ApiService.getGestoresDisponibles();
-    setState(() {});
-  }
-
+  
   Future<void> fetchVisitas() async {
     setState(() => loading = true);
     visitas = await ApiService.getVisitas();
@@ -178,20 +255,25 @@ void hideBanner() {
     }
   }
 
-  void openForm({Map<String, dynamic>? visita}) {
-    if (visita == null) {
-      // Evitamos error al abrir modal con async
-      obtenerUbicacionActual().then((_) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _abrirFormularioModal(null);
+void openForm({Map<String, dynamic>? visita}) {
+  if (visita == null) {
+    obtenerUbicacionActual().then((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _abrirFormularioModal({
+          'pacienteId': pacienteId,
+          'gestorId': gestorId,
+          'fechaVisita': fechaVisita,
+          'asignacionId': asignacionId,
         });
       });
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _abrirFormularioModal(visita);
-      });
-    }
+    });
+  } else {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _abrirFormularioModal(visita);
+    });
   }
+}
+
 
   void _abrirFormularioModal(Map<String, dynamic>? visita) {
     editingId = visita?['id'];

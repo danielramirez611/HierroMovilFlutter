@@ -540,6 +540,126 @@ static Future<bool> deleteAsignacionPermanente(int id) async {
 }
                                                                              /// ASIGNACION TAMBO ///
 //-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
+                                                                               /// AGENDAR VISITA ///
+// ✅ Crear agendamiento
+  static Future<bool> crearAgendamiento({
+    required int pacienteId,
+    required int gestorId,
+    required DateTime fechaProgramada,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/AgendamientoVisita'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "pacienteId": pacienteId,
+          "gestorId": gestorId,
+          "fechaProgramada": fechaProgramada.toIso8601String(),
+        }),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      print('❌ Error al crear agendamiento: $e');
+      return false;
+    }
+  }
+
+  // ✅ Obtener todos los agendamientos (no completados)
+static Future<List<dynamic>> getAgendamientos() async {
+  final prefs = await SharedPreferences.getInstance();
+  const cacheKey = 'cachedAgendamientos';
+
+  try {
+    final res = await http.get(Uri.parse('$baseUrl/AgendamientoVisita'));
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      await prefs.setString(cacheKey, jsonEncode(data)); // ✅ guarda en caché
+      return data;
+    }
+  } catch (e) {
+    print('⚠️ Sin conexión. Cargando agendamientos desde caché.');
+  }
+
+  // 🧠 Recupera desde caché si no hay internet
+  final cached = prefs.getString(cacheKey);
+  if (cached != null) return jsonDecode(cached);
+
+  return []; // Si tampoco hay caché
+}
+
+  // ✅ Obtener agendamiento por ID
+static Future<Map<String, dynamic>?> getAgendamientoById(int id) async {
+  final prefs = await SharedPreferences.getInstance();
+  final cacheKey = 'cachedAgendamientoById_$id';
+
+  try {
+    final res = await http.get(Uri.parse('$baseUrl/AgendamientoVisita/$id'));
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      await prefs.setString(cacheKey, jsonEncode(data)); // ✅ guarda caché por ID
+      return data;
+    }
+  } catch (e) {
+    print('⚠️ Sin conexión. Cargando agendamiento ID:$id desde caché.');
+  }
+
+  // 🧠 Recuperar desde caché si no hay internet
+  final cached = prefs.getString(cacheKey);
+  if (cached != null) return jsonDecode(cached);
+
+  return null; // Nada disponible
+}
+
+  // ✅ Editar agendamiento
+  static Future<bool> editarAgendamiento({
+    required int id,
+    required int pacienteId,
+    required int gestorId,
+    required DateTime fechaProgramada,
+  }) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/AgendamientoVisita/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "id": id,
+          "pacienteId": pacienteId,
+          "gestorId": gestorId,
+          "fechaProgramada": fechaProgramada.toIso8601String(),
+          "completado": false, // o verdadero si aplica
+        }),
+      );
+      return res.statusCode == 204;
+    } catch (e) {
+      print('❌ Error al editar agendamiento: $e');
+      return false;
+    }
+  }
+
+  // ✅ Eliminar agendamiento
+  static Future<bool> eliminarAgendamiento(int id) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/AgendamientoVisita/$id'));
+      return res.statusCode == 204;
+    } catch (e) {
+      print('❌ Error al eliminar agendamiento: $e');
+      return false;
+    }
+  }
+
+  // ✅ Marcar agendamiento como completado (cuando se registra la visita)
+  static Future<bool> completarAgendamiento(int id) async {
+    try {
+      final res = await http.put(Uri.parse('$baseUrl/AgendamientoVisita/completar/$id'));
+      return res.statusCode == 204;
+    } catch (e) {
+      print('❌ Error al marcar agendamiento como completado: $e');
+      return false;
+    }
+  }
+
+                                                                               /// AGENDAR VISITA ///
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
                                                                              /// VISITAS ///
 //🔄 Obtener todas las visitas domiciliarias
 static Future<List<dynamic>> getVisitas() async {
